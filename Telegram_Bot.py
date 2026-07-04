@@ -31,6 +31,6 @@ if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start() # 봇이 켜질 때 가짜 웹 서버도 백그라운드에서 같이 실행시킴
 
     app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("", ))
+    app.add_handler(CommandHandler("point", point))
     print("Bot Started")
     app.run_polling()
