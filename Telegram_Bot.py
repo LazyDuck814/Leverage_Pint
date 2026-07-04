@@ -21,6 +21,8 @@ load_dotenv("token.env")
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 
 async def pint(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"✅ /pint 명령어 수신 완료! (요청자: {update.message.from_user.first_name})", flush=True)
+
     results = get_leverage_pint(tickers=TICKERS, period=PERIOD)
     message = build_message(results)
     await update.message.reply_text(message)
