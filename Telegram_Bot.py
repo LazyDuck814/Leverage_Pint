@@ -26,13 +26,18 @@ def run_web():
 
 async def point(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = await update.message.reply_text("데이터 수집 및 분석 중...")
-
+    
+    if context.args:
+        target_tickers = [context.args[0].upper()]
+    else:
+        target_tickers = TICKERS
+    
     try:
-        results = await asyncio.to_thread(get_leverage_point, tickers=TICKERS, period=PERIOD)
+        results = await asyncio.to_thread(get_leverage_point, tickers=target_tickers, period=PERIOD)
         message = build_message(results)
         await status_msg.edit_text(message)
         print(f"✅ [성공] /point 처리 완료 (요청자: {update.message.from_user.first_name})", flush=True)
-
+        
     except Exception as e:
         await status_msg.edit_text(f"❌ 오류가 발생했습니다.\n(에러: {e})")
         print(f"❌ [실패] /point 처리 실패 {e}", flush=True)
