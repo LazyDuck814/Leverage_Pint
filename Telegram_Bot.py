@@ -29,6 +29,9 @@ async def point(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if context.args:
         target_tickers = [context.args[0].upper()]
+        if ticker.isdigit() and len(ticker) == 6:
+            ticker += ".KS"
+        target_tickers = [ticker]
     else:
         target_tickers = TICKERS
     
