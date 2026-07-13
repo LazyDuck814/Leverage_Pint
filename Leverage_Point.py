@@ -26,6 +26,8 @@ class SignalResult:
     latest_date: str         # 분석에 사용한 최신 거래일 날짜
     close: float             # 현재가 or 최신종가
     daily_return_pct: float  # 현재가 기준 전일 종가 대비 등락률 % 단위
+    ma5: float               # 5일 이동평균선 가격
+    ma20: float              # 20일 이동평균선 가격
     ma120: float             # 120일 이동평균선 가격
     rsi14: float             # 14일 기준 RSI 값
     minus_2sigma_pct: float  # 최근 1년 일간 등락률 기준 -2σ 값 % 단위
@@ -37,6 +39,7 @@ class SignalResult:
     rsi70_or_more: bool      # RSI가 70 이상인지 여부
     rsi75_or_more: bool      # RSI가 75 이상인지 여부
     rsi80_or_more: bool      # RSI가 80 이상인지 여부
+    dead_cross: bool         # 5일, 20일 이동평균선 데드크로스 조건 여부
     signal_type: str         # 최종 매매 신호 종류 [BOTH, SIGMA, RSI, SELL70, SELL75, SELL80, NONE]
     signal_message: str      # 텔레그램 메시지 [120일선, -2σ, RSI 조건 충족]
     action_text: str         # 실제 행동 문구 [매수 구간, 매도 구간]
@@ -140,12 +143,16 @@ def calculate_indicators(data: pd.DataFrame, ticker: str) -> tuple[pd.DataFrame,
     minus_2sigma = mean_return - 2 * std_return
     minus_3sigma = mean_return - 3 * std_return
 
+    ma5   = close.rolling(window=5).mean()
+    ma20  = close.rolling(window=20).mean()
     ma120 = close.rolling(window=120).mean()
     rsi14 = calculate_rsi(close, period=14)
 
     df = pd.DataFrame({
         "close": close,
         "return": returns,
+        "ma5": ma5,
+        "ma20": ma20,
         "ma120": ma120,
         "rsi14": rsi14
     }).dropna()
@@ -175,6 +182,7 @@ def get_conditions(df: pd.DataFrame, minus_2sigma: float) -> tuple[dict, pd.Seri
         "crossed_70_up": bool(prev_rsi14 < 70 and latest["rsi14"] >= 70),
         "crossed_75_up": bool(prev_rsi14 < 75 and latest["rsi14"] >= 75),
         "crossed_80_up": bool(prev_rsi14 < 80 and latest["rsi14"] >= 80),
+        "dead_cross": bool(prev["ma5"] >= prev["ma20"] and latest["ma5"] < latest["ma20"]),
     }
 
     return conditions, latest, latest_date
@@ -193,7 +201,7 @@ def get_signal(ticker: str, latest_date: str, conditions: dict) -> tuple[str, st
         state = load_signal_state()
         ticker_state = get_ticker_state(state, ticker_upper)
 
-        # 1차 매수구간(RSI 35)에 진입하면 사이클 초기화
+        # 1차 매수구간(RSI 35)에 진입하면 사이클 초기화, True를 False로 수정 조건
         buy_signal = (
             (conditions["below_ma120"] and conditions["below_minus_2sigma"])
             or conditions["rsi35_or_less"]
@@ -229,7 +237,12 @@ def get_signal(ticker: str, latest_date: str, conditions: dict) -> tuple[str, st
 
     # 매도 로직
     elif ticker_upper in CYCLE_TICKERS:
-        if conditions["crossed_70_up"] and not ticker_state["sold_70"]:
+        if conditions["dead_cross"]:
+            signal_type = "SELL_DEADCROSS"
+            signal_message = "5일선-20일선 데드크로스 발생"
+            action_text = "대응구간 : 보유수량 10% 익절"
+
+        elif conditions["crossed_70_up"] and not ticker_state["sold_70"]:
             signal_type = "SELL70"
             signal_message = "RSI 70 상향 돌파"
             action_text = "1차 매도구간 : 보유수량 30% 익절"
@@ -275,6 +288,8 @@ def get_signal_data(ticker: str, name: str, period: str = PERIOD) -> SignalResul
         latest_date        = latest_date,
         close              = float(latest["close"]),
         daily_return_pct   = float(latest["return"] * 100),
+        ma5                = float(latest["ma5"]),
+        ma20               = float(latest["ma20"]),
         ma120              = float(latest["ma120"]),
         rsi14              = float(latest["rsi14"]),
         minus_2sigma_pct   = float(minus_2sigma * 100),
@@ -286,6 +301,7 @@ def get_signal_data(ticker: str, name: str, period: str = PERIOD) -> SignalResul
         rsi70_or_more      = conditions["rsi70_or_more"],
         rsi75_or_more      = conditions["rsi75_or_more"],
         rsi80_or_more      = conditions["rsi80_or_more"],
+        dead_cross         = conditions["dead_cross"],
         signal_type        = signal_type,
         signal_message     = signal_message,
         action_text        = action_text,
