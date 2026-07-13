@@ -16,10 +16,10 @@ GIST_HEADERS = {
 # ----------------
 
 
-def load_watchlist() -> list:
+def load_watchlist() -> dict:
     if not GITHUB_TOKEN or not GIST_ID:
         print("GITHUB_TOKEN 또는 GIST_ID가 설정되지 않았습니다.")
-        return []
+        return {}
     
     try:
         url = f"https://api.github.com/gists/{GIST_ID}"
@@ -29,14 +29,14 @@ def load_watchlist() -> list:
         files = response.json().get("files", {})
         if "watchlist.json" in files:
             return json.loads(files["watchlist.json"]["content"])
-        return []
+        return {}
     
     except Exception as e:
         print(f"Watchlist 로드 실패: {e}")
-        return []
+        return {}
 
 
-def save_watchlist(wl: list) -> None:
+def save_watchlist(wl: dict) -> None:
     if not GITHUB_TOKEN or not GIST_ID:
         print("GITHUB_TOKEN 또는 GIST_ID가 설정되지 않았습니다.")
         return
@@ -58,7 +58,6 @@ def save_watchlist(wl: list) -> None:
 
 
 def get_stock_name(ticker: str) -> str:
-    # 6자리 숫자인 경우 한국 주식으로 간주 -> 네이버 금융에서 한글 이름 가져오기
     if ticker.isdigit() and len(ticker) == 6:
         try:
             url = f"https://m.stock.naver.com/api/stock/{ticker}/integration"
@@ -68,7 +67,6 @@ def get_stock_name(ticker: str) -> str:
         except Exception:
             return ticker
             
-    # 그 외 영문 티커(미국 주식 등)인 경우 -> 야후 파이낸스에서 이름 가져오기
     else:
         try:
             info = yf.Ticker(ticker).info
@@ -78,13 +76,12 @@ def get_stock_name(ticker: str) -> str:
             return ticker
 
 
-def get_watchlist_text(wl: list) -> str:
+def get_watchlist_text(wl: dict) -> str:
     if not wl:
         return "관심종목이 비어있습니다."
 
     text = ""
-    for t in wl:
-        name = get_stock_name(t)
-        text += f"{name} : {t}\n"
+    for ticker, name in wl.items():
+        text += f"{name} : {ticker}\n"
         
     return text.strip()

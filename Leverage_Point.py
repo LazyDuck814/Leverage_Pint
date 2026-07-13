@@ -2,7 +2,7 @@ import os
 import json
 import requests
 from dataclasses import dataclass
-from typing import List
+from typing import List, Dict, Union
 import pandas as pd
 import yfinance as yf
 
@@ -22,6 +22,7 @@ GIST_HEADERS = {
 @dataclass
 class SignalResult:
     ticker: str              # 종목명 [TQQQ, SOXL, QLD]
+    name: str                # 한글 종목명
     latest_date: str         # 분석에 사용한 최신 거래일 날짜
     close: float             # 현재가 or 최신종가
     daily_return_pct: float  # 현재가 기준 전일 종가 대비 등락률 % 단위
@@ -31,13 +32,14 @@ class SignalResult:
     minus_3sigma_pct: float  # 최근 1년 일간 등락률 기준 -3σ 값 % 단위
     below_ma120: bool        # 현재가가 120일선 아래인지 여부
     below_minus_2sigma: bool # 등락률이 -2σ 이하인지 여부
+    rsi35_or_less: bool      # RSI가 35 이하인지 여부 (추가됨)
     rsi30_or_less: bool      # RSI가 30 이하인지 여부
     rsi70_or_more: bool      # RSI가 70 이상인지 여부
     rsi75_or_more: bool      # RSI가 75 이상인지 여부
     rsi80_or_more: bool      # RSI가 80 이상인지 여부
     signal_type: str         # 최종 매매 신호 종류 [BOTH, SIGMA, RSI, SELL70, SELL75, SELL80, NONE]
     signal_message: str      # 텔레그램 메시지 [120일선, -2σ, RSI 조건 충족]
-    action_text: str         # 실제 행동 문구 [5주 매수, 15주 매수, 남은 보유수량의 25% 익절, 대기]
+    action_text: str         # 실제 행동 문구 [매수 구간, 매도 구간]
     in_sell_zone_hold: bool  # 이미 익절 구간 안이지만 신규 돌파는 아닌 상태
 
     
@@ -165,6 +167,7 @@ def get_conditions(df: pd.DataFrame, minus_2sigma: float) -> tuple[dict, pd.Seri
     conditions = {
         "below_ma120": bool(latest["close"] < latest["ma120"]),
         "below_minus_2sigma": bool(latest["return"] <= minus_2sigma),
+        "rsi35_or_less": bool(latest["rsi14"] <= 35),
         "rsi30_or_less": bool(latest["rsi14"] <= 30),
         "rsi70_or_more": bool(latest["rsi14"] >= 70),
         "rsi75_or_more": bool(latest["rsi14"] >= 75),
@@ -190,9 +193,10 @@ def get_signal(ticker: str, latest_date: str, conditions: dict) -> tuple[str, st
         state = load_signal_state()
         ticker_state = get_ticker_state(state, ticker_upper)
 
+        # 1차 매수구간(RSI 35)에 진입하면 사이클 초기화
         buy_signal = (
             (conditions["below_ma120"] and conditions["below_minus_2sigma"])
-            or conditions["rsi30_or_less"]
+            or conditions["rsi35_or_less"]
         )
 
         if buy_signal and ticker_state["last_buy_cycle_date"] != latest_date:
@@ -202,46 +206,53 @@ def get_signal(ticker: str, latest_date: str, conditions: dict) -> tuple[str, st
             ticker_state["last_buy_cycle_date"] = latest_date
             save_signal_state(state)
 
+    # 매수 로직 (강한 조건부터 순차적으로 필터링)
     if conditions["below_ma120"] and conditions["below_minus_2sigma"] and conditions["rsi30_or_less"]:
-        signal_type = "BOTH"
-        signal_message = "120일선, -2σ, RSI 조건 충족"
-        action_text = "2차 매수구간"
+        signal_type = "BUY_3"
+        signal_message = "120일선, -2σ, RSI 30 이하 조건 모두 충족"
+        action_text = "3차 매수구간"
 
     elif conditions["below_ma120"] and conditions["below_minus_2sigma"]:
-        signal_type = "SIGMA"
+        signal_type = "BUY_2_SIGMA"
         signal_message = "120일선, -2σ 조건 충족"
-        action_text = "1차 매수구간"
+        action_text = "2차 매수구간"
 
     elif conditions["rsi30_or_less"]:
-        signal_type = "RSI"
-        signal_message = "RSI 조건 충족"
+        signal_type = "BUY_2_RSI"
+        signal_message = "RSI 30 이하 조건 충족"
+        action_text = "2차 매수구간"
+        
+    elif conditions["rsi35_or_less"]:
+        signal_type = "BUY_1_RSI"
+        signal_message = "RSI 35 이하 조건 충족"
         action_text = "1차 매수구간"
 
+    # 매도 로직
     elif ticker_upper in CYCLE_TICKERS:
         if conditions["crossed_70_up"] and not ticker_state["sold_70"]:
             signal_type = "SELL70"
             signal_message = "RSI 70 상향 돌파"
-            action_text = "남은 보유수량의 25% 익절"
+            action_text = "1차 매도구간 : 보유수량 30% 익절"
             ticker_state["sold_70"] = True
             save_signal_state(state)
 
         elif conditions["crossed_75_up"] and not ticker_state["sold_75"]:
             signal_type = "SELL75"
             signal_message = "RSI 75 상향 돌파"
-            action_text = "남은 보유수량의 25% 익절"
+            action_text = "2차 매도구간 : 보유수량 25% 익절"
             ticker_state["sold_75"] = True
             save_signal_state(state)
 
         elif conditions["crossed_80_up"] and not ticker_state["sold_80"]:
             signal_type = "SELL80"
             signal_message = "RSI 80 상향 돌파"
-            action_text = "남은 보유수량의 25% 익절"
+            action_text = "3차 매도구간 : 보유수량 20% 익절"
             ticker_state["sold_80"] = True
             save_signal_state(state)
 
         elif conditions["rsi70_or_more"]:
             signal_type = "NONE"
-            signal_message = "기존 익절 구간 유지 중"
+            signal_message = "기존 매도 구간 유지 중"
             action_text = "추가 행동 없음"
             in_sell_zone_hold = True
 
@@ -249,7 +260,7 @@ def get_signal(ticker: str, latest_date: str, conditions: dict) -> tuple[str, st
 
 
 # 하나의 종목에 대해 가격 데이터와 매매 신호를 최종 반환하는 함수
-def get_signal_data(ticker: str = "TQQQ", period: str = PERIOD) -> SignalResult:
+def get_signal_data(ticker: str, name: str, period: str = PERIOD) -> SignalResult:
     data = get_price_data(ticker, period)
 
     df, minus_2sigma, minus_3sigma, mean_return, std_return = calculate_indicators(data, ticker)
@@ -259,35 +270,40 @@ def get_signal_data(ticker: str = "TQQQ", period: str = PERIOD) -> SignalResult:
     signal_type, signal_message, action_text, in_sell_zone_hold = get_signal(ticker, latest_date, conditions)
 
     return SignalResult(
-        ticker=ticker.upper(),
-        latest_date=latest_date,
-        close=float(latest["close"]),
-        daily_return_pct=float(latest["return"] * 100),
-        ma120=float(latest["ma120"]),
-        rsi14=float(latest["rsi14"]),
-        minus_2sigma_pct=float(minus_2sigma * 100),
-        minus_3sigma_pct=float(minus_3sigma * 100),
-        below_ma120=conditions["below_ma120"],
-        below_minus_2sigma=conditions["below_minus_2sigma"],
-        rsi30_or_less=conditions["rsi30_or_less"],
-        rsi70_or_more=conditions["rsi70_or_more"],
-        rsi75_or_more=conditions["rsi75_or_more"],
-        rsi80_or_more=conditions["rsi80_or_more"],
-        signal_type=signal_type,
-        signal_message=signal_message,
-        action_text=action_text,
-        in_sell_zone_hold=in_sell_zone_hold
+        ticker             = ticker.upper(),
+        name               = name,
+        latest_date        = latest_date,
+        close              = float(latest["close"]),
+        daily_return_pct   = float(latest["return"] * 100),
+        ma120              = float(latest["ma120"]),
+        rsi14              = float(latest["rsi14"]),
+        minus_2sigma_pct   = float(minus_2sigma * 100),
+        minus_3sigma_pct   = float(minus_3sigma * 100),
+        below_ma120        = conditions["below_ma120"],
+        below_minus_2sigma = conditions["below_minus_2sigma"],
+        rsi35_or_less      = conditions["rsi35_or_less"],
+        rsi30_or_less      = conditions["rsi30_or_less"],
+        rsi70_or_more      = conditions["rsi70_or_more"],
+        rsi75_or_more      = conditions["rsi75_or_more"],
+        rsi80_or_more      = conditions["rsi80_or_more"],
+        signal_type        = signal_type,
+        signal_message     = signal_message,
+        action_text        = action_text,
+        in_sell_zone_hold  = in_sell_zone_hold
     )
 
 
 # 실행
-def get_leverage_point(tickers: List[str], period: str = PERIOD) -> List[SignalResult]:
+def get_leverage_point(tickers: Union[List[str], Dict[str, str]], period: str = PERIOD) -> List[SignalResult]:
     results = []
+    
+    target_items = tickers.items() if isinstance(tickers, dict) else [(t, t) for t in tickers]
 
-    for ticker in tickers:
-        results.append(get_signal_data(ticker, period=period))
+    for ticker, name in target_items:
+        results.append(get_signal_data(ticker, name, period=period))
 
     return results
+
 
 
 # 텔레그램 메시지 전송하는 함수
@@ -298,9 +314,9 @@ def build_message(results: List[SignalResult]) -> str:
 
     for result in results:
         lines = [
-            f"[{result.ticker}]",
-            f"• 현재가(등락률) : {result.close:.2f}({result.daily_return_pct:+.2f}%)",
-            f"• 120일선(-2σ) : {result.ma120:.2f}({result.minus_2sigma_pct:+.2f}%)",
+            f"[{result.name}]",
+            f"• 현재가(등락률) : {result.close:,.2f}({result.daily_return_pct:+.2f}%)",
+            f"• 120일선(-2σ) : {result.ma120:,.2f}({result.minus_2sigma_pct:+.2f}%)",
             f"• RSI : {result.rsi14:.1f}",
             "----------------------------------------------------",
             f">> {result.signal_message}",

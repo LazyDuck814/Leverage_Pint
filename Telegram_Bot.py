@@ -10,7 +10,7 @@ TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from Leverage_Point import get_leverage_point, build_message, TICKERS, PERIOD
-from Leverage_List import load_watchlist, save_watchlist, get_watchlist_text
+from Leverage_List import load_watchlist, save_watchlist, get_watchlist_text, get_stock_name
 
 # --- Render용 가짜 웹 서버 세팅 ---
 web_app = Flask(__name__)
@@ -33,12 +33,12 @@ async def point(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("ℹ️ 리스트가 비어있습니다. /list_add 명령어로 추가해주세요.")
             return
         
-        target_tickers = []
-        for t in wl:
+        target_tickers = {}
+        for t, name in wl.items():
             if t.isdigit() and len(t) == 6:
-                target_tickers.append(t + ".KS")
+                target_tickers[t + ".KS"] = name
             else:
-                target_tickers.append(t)
+                target_tickers[t] = name
 
     elif context.args:
         ticker = context.args[0].upper()
@@ -62,20 +62,23 @@ async def point(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def list_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("종목명을 입력해주세요. (예: /list_add AAPL)")
+        await update.message.reply_text("종목명을 입력해주세요. (예: /list_add 005930)")
         return
+        
     ticker = context.args[0].upper()
+    display_ticker = ticker.replace(".KS", "") if ticker.endswith(".KS") else ticker
     
     try:
         wl = await asyncio.to_thread(load_watchlist)
-        if ticker not in wl:
-            wl.append(ticker)
+        if display_ticker not in wl:
+            add_name = await asyncio.to_thread(get_stock_name, display_ticker)
+            wl[display_ticker] = add_name
             await asyncio.to_thread(save_watchlist, wl)
-            await update.message.reply_text(f"✅ [{ticker}] 리스트에 추가되었습니다.")
+            await update.message.reply_text(f"✅ [{add_name}({display_ticker})] 리스트에 추가되었습니다.")
             print(f"✅ [성공] /list_add 처리 완료 (요청자: {update.message.from_user.first_name})", flush=True)
 
         else:
-            await update.message.reply_text(f"ℹ️ [{ticker}] 이미 리스트에 존재합니다.")
+            await update.message.reply_text(f"ℹ️ [{wl[display_ticker]}] 이미 리스트에 존재합니다.")
             print(f"ℹ️ [안내] /list_add 처리 완료 (요청자: {update.message.from_user.first_name})", flush=True)
             
     except Exception as e:
@@ -85,16 +88,18 @@ async def list_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def list_del(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("종목명을 입력해주세요. (예: /list_del AAPL)")
+        await update.message.reply_text("종목명을 입력해주세요. (예: /list_del 005930)")
         return
+    
     ticker = context.args[0].upper()
+    display_ticker = ticker.replace(".KS", "") if ticker.endswith(".KS") else ticker
     
     try:
         wl = await asyncio.to_thread(load_watchlist)
-        if ticker in wl:
-            wl.remove(ticker)
+        if display_ticker in wl:
+            deleted_name = wl.pop(display_ticker)
             await asyncio.to_thread(save_watchlist, wl)
-            await update.message.reply_text(f"✅ [{ticker}] 리스트에서 삭제되었습니다.")
+            await update.message.reply_text(f"✅ [{deleted_name}] 리스트에서 삭제되었습니다.")
             print(f"✅ [성공] /list_del 처리 완료 (요청자: {update.message.from_user.first_name})", flush=True)
             
         else:
