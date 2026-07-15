@@ -9,7 +9,7 @@ TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from Leverage_Point import get_leverage_point, build_message, TICKERS, PERIOD
+from Leverage_Point import get_leverage_point, build_point_message, TICKERS, PERIOD
 from Leverage_List import load_watchlist, save_watchlist, get_watchlist_text, get_stock_name
 from Leverage_Scan import build_scan_message
 
@@ -52,7 +52,7 @@ async def point(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         results = await asyncio.to_thread(get_leverage_point, tickers=target_tickers, period=PERIOD)
-        message = build_message(results)
+        message = build_point_message(results)
         await status_msg.edit_text(message)
         print(f"✅ [성공] /point 처리 완료 (요청자: {update.message.from_user.first_name})", flush=True)
 

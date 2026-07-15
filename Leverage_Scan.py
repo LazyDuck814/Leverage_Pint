@@ -1,7 +1,7 @@
 import sys
 from dataclasses import dataclass
 import pandas as pd
-from Leverage_Point import get_price_data, calculate_indicators
+from Leverage_Point import get_price_data, calculate_rsi, calculate_sma, calculate_sigma, BUFFERED_SIGMA
 
 @dataclass
 class ScanResult:
@@ -20,22 +20,36 @@ class ScanResult:
 
 
 def get_scan_data(ticker: str = "TQQQ", period: str = "1y") -> ScanResult:
-    data = get_price_data(ticker, period)
+    years = int(period.replace("y", ""))
+    fetch_period = f"{years + 1}y"
+    data = get_price_data(ticker, fetch_period)
+    close = data["Close"].squeeze()
     
-    df, minus_2sigma, minus_3sigma, mean_return, std_return = calculate_indicators(data, ticker)
+    df = calculate_sma(close)
+    df["rsi14"] = calculate_rsi(close, period=14)
+    df = df.dropna()
+    df = df.tail(252 * years)
 
-    df["below_ma120"] = df["close"] < df["ma120"]
-    df["below_minus_2sigma"] = df["return"] <= minus_2sigma
-    df["rsi35_or_less"] = df["rsi14"] <= 35
-    df["rsi30_or_less"] = df["rsi14"] <= 30
+    if len(df) < 2:
+        raise ValueError(f"{ticker} 계산 가능한 데이터가 부족합니다.")
+
+    minus_2sigma, minus_3sigma, mean_return, std_return = calculate_sigma(df["return"])
+
+    df["below_sma120"]       = df["close"] < df["sma120"]
+    df["below_minus_2sigma"] = df["return"] <= minus_2sigma * BUFFERED_SIGMA
+    df["rsi35_or_less"]      = df["rsi14"] <= 35
+    df["rsi30_or_less"]      = df["rsi14"] <= 30
+    df["std20"]              = df["close"].rolling(window=20).std(ddof=0)
+    df["bb_lower"]           = df["sma20"] - (2 * df["std20"])
+    df["below_bb_lower"]     = df["close"] <= df["bb_lower"]
 
     latest_date = df.index[-1].date().isoformat()
 
     return ScanResult(
         ticker           = ticker.upper(),
-        data_start       = data.index.min().date().isoformat(),
-        data_end         = data.index.max().date().isoformat(),
-        data_count       = len(data),
+        data_start       = df.index.min().date().isoformat(),
+        data_end         = df.index.max().date().isoformat(),
+        data_count       = len(df),
         mean_return_pct  = float(mean_return * 100),
         std_return_pct   = float(std_return * 100),
         minus_2sigma_pct = float(minus_2sigma * 100),
@@ -51,18 +65,21 @@ def print_scan(ticker: str = "TQQQ", period: str = "1y") -> None:
     result = get_scan_data(ticker, period)
     df = result.scan
 
-    cond_ma = df["below_ma120"]
-    cond_sigma = df["below_minus_2sigma"]
-    cond_rsi35 = df["rsi35_or_less"]
-    cond_rsi30 = df["rsi30_or_less"]
+    cond_sma      = df["below_sma120"]
+    cond_sigma    = df["below_minus_2sigma"]
+    cond_rsi35    = df["rsi35_or_less"]
+    cond_rsi30    = df["rsi30_or_less"]
+    cond_bb_lower = df["below_bb_lower"]
 
-    buy3 = cond_ma & cond_sigma & cond_rsi30
-    buy2_sigma = (cond_ma & cond_sigma) & ~buy3
-    buy2_rsi = cond_rsi30 & ~buy3
-    buy1 = cond_rsi35 & ~(buy3 | buy2_sigma | buy2_rsi)
+    buy3        = cond_sma & cond_sigma & cond_rsi30
+    buy2_sigma  = (cond_sma & cond_sigma) & ~buy3
+    buy2_rsi    = cond_rsi30 & ~buy3
+    buy1_rsi_bb = (cond_rsi35 & cond_bb_lower) & ~(buy3 | buy2_sigma | buy2_rsi)
+    #buy_bb      = cond_bb_lower
 
     scans = [
-        ("✅ 1차 매수 (RSI 35 이하 단독)", df[buy1]),
+        # ("📊 [단독 확인용] 볼린저 밴드 하단 이탈 (전체)", df[buy_bb]),
+        ("✅ 1차 매수 (RSI 35 이하 & BB 하단 이탈)", df[buy1_rsi_bb]),
         ("✅ 2차 매수 (RSI 30 이하 단독)", df[buy2_rsi]),
         ("✅ 2차 매수 (120일선 아래 & -2σ 이하)", df[buy2_sigma]),
         ("🔥 3차 매수 (120일선 아래 & -2σ 이하 & RSI 30 이하)", df[buy3]),
@@ -93,7 +110,8 @@ def print_scan(ticker: str = "TQQQ", period: str = "1y") -> None:
                 f"종가: {row['close']:>7,.2f} | "
                 f"등락률: {row['return'] * 100:>+6.2f}% | "
                 f"RSI: {row['rsi14']:>5.1f} | "
-                f"120일선: {row['ma120']:>7,.2f}"
+                f"120일선: {row['sma120']:>7,.2f} | "
+                f"BB하단: {row['bb_lower']:>7,.2f}"
             )
         print()
 
@@ -107,18 +125,21 @@ def build_scan_message(ticker: str, period: str = "1y") -> str:
 
     df = result.scan
 
-    cond_ma = df["below_ma120"]
-    cond_sigma = df["below_minus_2sigma"]
-    cond_rsi35 = df["rsi35_or_less"]
-    cond_rsi30 = df["rsi30_or_less"]
+    cond_sma      = df["below_sma120"]
+    cond_sigma    = df["below_minus_2sigma"]
+    cond_rsi35    = df["rsi35_or_less"]
+    cond_rsi30    = df["rsi30_or_less"]
+    cond_bb_lower = df["below_bb_lower"]
 
-    buy3 = cond_ma & cond_sigma & cond_rsi30
-    buy2_sigma = (cond_ma & cond_sigma) & ~buy3
-    buy2_rsi = cond_rsi30 & ~buy3
-    buy1 = cond_rsi35 & ~(buy3 | buy2_sigma | buy2_rsi)
+    buy3       = cond_sma & cond_sigma & cond_rsi30
+    buy2_sigma = (cond_sma & cond_sigma) & ~buy3
+    buy2_rsi   = cond_rsi30 & ~buy3
+    buy1_rsi   = cond_rsi35 & ~(buy3 | buy2_sigma | buy2_rsi)
+    buy1_bb    = cond_bb_lower
 
     scans = [
-        ("✅ 1차 매수 (RSI 35 이하 단독)", df[buy1]),
+        ("📊 [단독 확인용] 볼린저 밴드 하단 이탈 (전체)", df[buy1_bb]),
+        ("✅ 1차 매수 (RSI 35 이하 단독)", df[buy1_rsi]),
         ("✅ 2차 매수 (RSI 30 이하 단독)", df[buy2_rsi]),
         ("✅ 2차 매수 (120일선 아래 & -2σ 이하)", df[buy2_sigma]),
         ("🔥 3차 매수 (120일선 & -2σ & RSI 30)", df[buy3]),
@@ -148,6 +169,7 @@ def build_scan_message(ticker: str, period: str = "1y") -> str:
                 f"{row['close']:,.2f} | "
                 f"{row['return'] * 100:+.2f}% | "
                 f"RSI {row['rsi14']:.1f} | "
+                f"BB하단: {row['bb_lower']:,.2f}"
             )
         lines.append("") 
 
