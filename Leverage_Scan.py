@@ -21,7 +21,7 @@ class ScanResult:
     scan: pd.DataFrame        # 분석 완료된 전체 데이터 프레임
 
 
-def get_scan_data(ticker: str, period: str = PERIOD) -> ScanResult:
+def get_scan_data(ticker: str, period: str) -> ScanResult:
     years = int(period.replace("y", ""))
     fetch_period = f"{years + 1}y"
 
@@ -29,7 +29,7 @@ def get_scan_data(ticker: str, period: str = PERIOD) -> ScanResult:
     close = data["Close"].squeeze()
     returns = close.pct_change(fill_method=None)
 
-    sma5, sma20, sma60, sma120 = calculate_sma(close)
+    sma5, sma20, sma60, sma120, sma200 = calculate_sma(close)
     rsi14 = calculate_rsi(close)
     std20, bb_upper, bb_lower = calculate_bollinger_bands(close)
 
@@ -40,6 +40,7 @@ def get_scan_data(ticker: str, period: str = PERIOD) -> ScanResult:
         "sma20"   : sma20,
         "sma60"   : sma60,
         "sma120"  : sma120,
+        "sma200"  : sma200,
         "rsi14"   : rsi14,
         "std20"   : std20,
         "bb_lower": bb_lower
@@ -77,7 +78,7 @@ def get_scan_data(ticker: str, period: str = PERIOD) -> ScanResult:
     )
 
 
-def print_scan(ticker: str, period: str = PERIOD) -> None:
+def print_scan(ticker: str, period: str) -> None:
     result = get_scan_data(ticker, period)
     df = result.scan
 

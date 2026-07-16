@@ -137,7 +137,7 @@ def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
 # 등락률 표준편차를 계산하는 함수
 def calculate_sigma(returns: pd.Series) -> tuple[float, float, float, float]:
     mean_return = returns.mean()
-    std_return = returns.std()
+    std_return  = returns.std()
 
     minus_2sigma = mean_return - 2 * std_return
     minus_3sigma = mean_return - 3 * std_return
@@ -151,8 +151,9 @@ def calculate_sma(close: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series]:
     sma20  = close.rolling(window=20).mean()
     sma60  = close.rolling(window=60).mean()
     sma120 = close.rolling(window=120).mean()
+    sma200 = close.rolling(window=200).mean()
 
-    return sma5, sma20, sma60, sma120
+    return sma5, sma20, sma60, sma120, sma200
 
 
 # 볼린저 밴드 계산하는 함수
@@ -192,7 +193,7 @@ def get_conditions(df: pd.DataFrame, minus_2sigma: float) -> tuple[dict, pd.Seri
     return conditions, latest, latest_date
 
 
-# 하나의 종목에 대해 가격 데이터와 매매 신호를 최종 반환하는 함수
+# 매매 신호를 계산하는 함수
 def get_signal_data(ticker: str, name: str, period: str = PERIOD) -> SignalResult:
     years = int(period.replace("y", ""))
     fetch_period = f"{years + 1}y"
@@ -201,7 +202,7 @@ def get_signal_data(ticker: str, name: str, period: str = PERIOD) -> SignalResul
     close = data["Close"].squeeze()
     returns = close.pct_change(fill_method=None)
 
-    sma5, sma20, sma60, sma120 = calculate_sma(close)
+    sma5, sma20, sma60, sma120, sma200 = calculate_sma(close)
     rsi14 = calculate_rsi(close)
     std20, bb_upper, bb_lower = calculate_bollinger_bands(close)
 
@@ -210,7 +211,9 @@ def get_signal_data(ticker: str, name: str, period: str = PERIOD) -> SignalResul
         "return"  : returns,
         "sma5"    : sma5,
         "sma20"   : sma20,
+        "sma60"   : sma60,
         "sma120"  : sma120,
+        "sma200"  : sma200,
         "rsi14"   : rsi14,
         "std20"   : std20,
         "bb_lower": bb_lower
