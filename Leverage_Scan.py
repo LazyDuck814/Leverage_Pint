@@ -21,7 +21,7 @@ class ScanResult:
     scan: pd.DataFrame        # 분석 완료된 전체 데이터 프레임
 
 
-def get_scan_data(ticker: str, period: str) -> ScanResult:
+def get_scan_data(ticker: str, period: str = PERIOD) -> ScanResult:
     years = int(period.replace("y", ""))
     fetch_period = f"{years + 1}y"
 
@@ -77,7 +77,7 @@ def get_scan_data(ticker: str, period: str) -> ScanResult:
     )
 
 
-def print_scan(ticker: str, period: str) -> None:
+def print_scan(ticker: str, period: str = PERIOD) -> None:
     result = get_scan_data(ticker, period)
     df = result.scan
 
@@ -133,7 +133,7 @@ def print_scan(ticker: str, period: str) -> None:
 
 
 
-def build_scan_message(ticker: str, period: str) -> str:
+def build_scan_message(ticker: str, period: str = PERIOD) -> str:
     try:
         result = get_scan_data(ticker, period)
     except Exception as e:
