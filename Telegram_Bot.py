@@ -12,7 +12,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from Leverage_Point import get_leverage_point, build_point_message, TICKERS, PERIOD
 from Leverage_List import load_watchlist, save_watchlist, get_watchlist_text, get_stock_name
 from Leverage_Scan import build_scan_message
-#from Leverage_USD import get_usd_signal_data, build_usd_message
+from Leverage_USD import build_usd_message
 
 # --- Render용 가짜 웹 서버 세팅 ---
 web_app = Flask(__name__)
@@ -127,8 +127,8 @@ async def show_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"ℹ️ [성공] /list 처리 완료 (요청자: {update.message.from_user.first_name})", flush=True)
             return
         
-        msg = await asyncio.to_thread(get_watchlist_text, wl)
-        await status_msg.edit_text(msg)
+        message = await asyncio.to_thread(get_watchlist_text, wl)
+        await status_msg.edit_text(message)
         print(f"✅ [성공] /list 처리 완료 (요청자: {update.message.from_user.first_name})", flush=True)
         
     except Exception as e:
@@ -160,6 +160,19 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"❌ [실패] /scan 처리 실패 {e}", flush=True)
 
 
+async def usd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    status_msg = await update.message.reply_text("환율 매수 타점 분석 중...")
+    
+    try:
+        message = await asyncio.to_thread(build_usd_message)
+        await status_msg.edit_text(message)
+        print(f"✅ [성공] /usd 처리 완료 (요청자: {update.message.from_user.first_name})", flush=True)
+
+    except Exception as e:
+        await status_msg.edit_text(f"❌ 오류가 발생했습니다.\n(에러: {e})")
+        print(f"❌ [실패] /usd 처리 실패 {e}", flush=True)
+
+
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
 
@@ -169,6 +182,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("list_add", list_add))
     app.add_handler(CommandHandler("list_del", list_del))
     app.add_handler(CommandHandler("scan", scan))
+    app.add_handler(CommandHandler("usd", usd))
     
     print("Bot Started", flush=True)
     app.run_polling()
