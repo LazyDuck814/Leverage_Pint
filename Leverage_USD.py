@@ -88,7 +88,7 @@ def get_usd_signal(conditions: UsdConditions) -> UsdSignal:
         return UsdSignal("RSI 35 이하 & BB 하단 이하", "약한 환전 구간")
 
     else:
-        return UsdSignal("관망", "대기")
+        return UsdSignal("조건 미충족", "대기")
 
 
 def get_usd_signal_data(ticker: str = "KRW=X", period: str = "1y") -> UsdSignalResult:
