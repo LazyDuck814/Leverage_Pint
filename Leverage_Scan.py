@@ -97,40 +97,6 @@ def get_buy_scan_groups(df: pd.DataFrame) -> list[tuple[str, pd.DataFrame]]:
     ]
 
 
-def print_scan(ticker: str, period: str = PERIOD) -> None:
-    result = get_scan_data(ticker, period)
-
-    print(f"종목코드       : {result.ticker}")
-    print(f"데이터 시작일  : {result.data_start}")
-    print(f"데이터 종료일  : {result.data_end}")
-    print(f"데이터 개수    : {result.data_count}")
-    print(f"최신 종가      : {result.close:,.2f}")
-    print(f"RSI 지표       : {result.rsi14:.2f}")
-    print(f"일간 평균 수익 : {result.mean_return_pct:.2f}%")
-    print(f"일간 표준편차  : {result.std_return_pct:.2f}%")
-    print(f"-2σ 기준       : {result.minus_2sigma_pct:.2f}%")
-    print(f"-3σ 기준       : {result.minus_3sigma_pct:.2f}%")
-    print()
-
-    for title, target_df in get_buy_scan_groups(result.scan):
-        print(f"[{title}]")
-
-        if target_df.empty:
-            print("데이터 없음\n")
-            continue
-
-        for date, row in target_df.iterrows():
-            print(
-                f"{date.date()} | "
-                f"종가: {row['close']:>7,.2f} | "
-                f"등락률: {row['daily_return'] * 100:>+6.2f}% | "
-                f"RSI: {row['rsi14']:>5.1f} | "
-                f"120일선: {row['sma120']:>7,.2f} | "
-                f"BB하단: {row['bb_lower']:>7,.2f}"
-            )
-        print()
-
-
 def build_scan_message(ticker: str, period: str = PERIOD) -> str:
     try:
         result = get_scan_data(ticker, period)
@@ -159,9 +125,9 @@ def build_scan_message(ticker: str, period: str = PERIOD) -> str:
         for date, row in target_df.iterrows():
             lines.append(
                 f"{date.date()} | "
-                f"{row['close']:,.2f} | "
-                f"{row['daily_return'] * 100:+.2f}% | "
-                f"RSI {row['rsi14']:.1f}"
+                f"{row['close']:>6,.2f} | "
+                f"{row['daily_return'] * 100:+6.2f}% | "
+                f"RSI {row['rsi14']:5.1f}"
             )
         lines.append("")
 
@@ -178,4 +144,4 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3:
         period = f"{sys.argv[2]}y"
 
-    print_scan(ticker, period)
+    print(build_scan_message(ticker, period))

@@ -140,15 +140,16 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = await update.message.reply_text(f"과거 타점 스캔 중...")
 
     if not context.args:
-        await update.message.reply_text("종목명을 입력해주세요. (예: /list_del 005930)")
+        await status_msg.edit_text("종목명을 입력해주세요. (예: /scan 005930)")
         return
         
     ticker = context.args[0].upper()
     if ticker.isdigit() and len(ticker) == 6:
         ticker += ".KS"
-    
+    period = context.args[1] if len(context.args) > 1 else "1"
+
     try:
-        scan_result_text = await asyncio.to_thread(build_scan_message, ticker)
+        scan_result_text = await asyncio.to_thread(build_scan_message, ticker, period)
         
         if len(scan_result_text) > 4000:
             scan_result_text = scan_result_text[:4000] + "\n\n... (데이터가 너무 길어 생략됨)"
