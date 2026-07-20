@@ -42,6 +42,7 @@ class LocResult:
     name: str
     latest_date: str
     close: float
+    rsi14: float
     prices: LocPrices
     orders: list[LocOrder]
 
@@ -160,6 +161,7 @@ def get_loc_data(ticker: str, name: str, period: str = PERIOD) -> LocResult:
     if latest_date == market_time.date() and market_time.time() < confirm_time:
         close = close.iloc[:-1]
 
+    rsi14 = calculate_rsi(close)
     prices = get_loc_prices(close, years)
     orders = get_loc_orders(prices)
 
@@ -168,6 +170,7 @@ def get_loc_data(ticker: str, name: str, period: str = PERIOD) -> LocResult:
         name        = name,
         latest_date = pd.Timestamp(close.index[-1]).date().isoformat(),
         close       = float(close.iloc[-1]),
+        rsi14       = float(rsi14.iloc[-1]),
         prices      = prices,
         orders      = orders,
     )
@@ -196,12 +199,13 @@ def build_loc_message(results: List[LocResult]) -> str:
     for result in results:
         lines = [
             f"[{result.name}]",
-            f"현재가 : {result.close:,.2f}",
+            f"• 현재가 : {result.close:,.2f}",
+            f"• RSI : {result.rsi14:.1f}",
             "----------------------------------------------------",
         ]
 
         for order in result.orders:
-            lines.append(f"{order.label}차 LOC 주문가 : {order.order_price:,.2f} | {order.shares}주")
+            lines.append(f">> {order.label}차 LOC 주문가 : {order.order_price:,.2f} | {order.shares}주")
 
         sections.append("\n".join(lines))
 

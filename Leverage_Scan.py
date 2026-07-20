@@ -113,7 +113,7 @@ def build_scan_message(ticker: str = TICKER, period: str = PERIOD) -> str:
         f"• 일간 표준편차: {result.std_return_pct:.2f}%",
         f"• -2σ 기준: {result.minus_2sigma_pct:.2f}%",
         f"• -3σ 기준: {result.minus_3sigma_pct:.2f}%",
-        "----------------------------------------------",
+        "----------------------------------------------------",
     ]
 
     for title, target_df in get_buy_scan_groups(result.scan):
