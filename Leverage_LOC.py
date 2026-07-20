@@ -146,17 +146,25 @@ def get_loc_data(ticker: str, name: str, period: str = PERIOD) -> LocResult:
     data   = get_price_data(ticker, f"{years + 1}y")
     close  = data["Close"].squeeze()
 
-    market_time = datetime.now(ZoneInfo("America/New_York"))
+    ticker_upper = ticker.upper()
+
+    if ticker_upper.endswith(".KS") or ticker_upper.startswith("^K"):
+        market_time = datetime.now(ZoneInfo("Asia/Seoul"))
+        confirm_time = time(16, 0)
+    else:
+        market_time = datetime.now(ZoneInfo("America/New_York"))
+        confirm_time = time(16, 30)
+
     latest_date = close.index[-1].date()
 
-    if latest_date == market_time.date() and market_time.time() < time(16, 30):
+    if latest_date == market_time.date() and market_time.time() < confirm_time:
         close = close.iloc[:-1]
 
     prices = get_loc_prices(close, years)
     orders = get_loc_orders(prices)
 
     return LocResult(
-        ticker      = ticker.upper(),
+        ticker      = ticker_upper,
         name        = name,
         latest_date = pd.Timestamp(close.index[-1]).date().isoformat(),
         close       = float(close.iloc[-1]),
